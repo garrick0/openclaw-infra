@@ -36,6 +36,7 @@ tofu init
 | `./setup.sh` | Deploy new infra or safely update existing (won't destroy server) |
 | `./configure-client.sh` | Configure laptop to connect to remote gateway |
 | `./status.sh` | Health check for server and local client |
+| `./setup-tailscale.sh` | Add Tailscale for encrypted access (recommended) |
 
 ## Architecture
 
@@ -83,11 +84,11 @@ allowed_client_ips = ["1.2.3.4/32"]     # Your IP, set by setup.sh
 
 ### Adding TLS (Recommended)
 
-**Option A: Tailscale (easiest)**
+**Option A: Tailscale (easiest)** - run the setup script:
 ```bash
-# On server
-openclaw config set gateway.tailscale.mode serve
+./setup-tailscale.sh
 ```
+This installs Tailscale, configures encrypted access, and optionally closes the public port.
 
 **Option B: Reverse proxy**
 Put nginx/caddy in front with Let's Encrypt.
