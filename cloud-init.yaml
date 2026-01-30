@@ -1,0 +1,96 @@
+#cloud-config
+
+timezone: ${timezone}
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - git
+  - htop
+  - jq
+  - unzip
+
+write_files:
+  - path: /opt/openclaw-config.json
+    permissions: '0600'
+    content: |
+      ${openclaw_config}
+
+  - path: /etc/systemd/system/openclaw.service
+    content: |
+      [Unit]
+      Description=OpenClaw Gateway
+      After=network.target
+
+      [Service]
+      Type=simple
+      User=openclaw
+      WorkingDirectory=/home/openclaw
+      Environment=NODE_ENV=production
+      Environment=HOME=/home/openclaw
+      ExecStart=/home/openclaw/.nvm/versions/node/v22/bin/node /home/openclaw/.nvm/versions/node/v22/bin/openclaw gateway start --foreground
+      Restart=always
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /opt/setup-openclaw.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+
+      # Mount data volume if not mounted
+      if ! mountpoint -q /mnt/data; then
+        mkdir -p /mnt/data
+        mount -o discard,defaults /dev/disk/by-id/scsi-0HC_Volume_* /mnt/data || true
+      fi
+
+      # Create openclaw user
+      if ! id openclaw &>/dev/null; then
+        useradd -m -s /bin/bash openclaw
+      fi
+
+      # Setup data directories
+      mkdir -p /mnt/data/openclaw/{workspace,.openclaw}
+      chown -R openclaw:openclaw /mnt/data/openclaw
+
+      # Symlink to user home
+      ln -sfn /mnt/data/openclaw/workspace /home/openclaw/workspace
+      ln -sfn /mnt/data/openclaw/.openclaw /home/openclaw/.openclaw
+
+      # Copy initial config if not exists
+      if [ ! -f /mnt/data/openclaw/.openclaw/openclaw.json ]; then
+        cp /opt/openclaw-config.json /mnt/data/openclaw/.openclaw/openclaw.json
+        chown openclaw:openclaw /mnt/data/openclaw/.openclaw/openclaw.json
+      fi
+
+      # Install Node.js via nvm (as openclaw user)
+      sudo -u openclaw bash << 'EOF'
+      export HOME=/home/openclaw
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      nvm install 22
+      nvm use 22
+      nvm alias default 22
+      
+      # Install OpenClaw
+      npm install -g openclaw@${openclaw_version}
+      EOF
+
+      # Enable and start the service
+      systemctl daemon-reload
+      systemctl enable openclaw
+      systemctl start openclaw
+
+      echo "=========================================="
+      echo "OpenClaw installed and running!"
+      echo "Gateway listening on port 18789"
+      echo "=========================================="
+
+runcmd:
+  - /opt/setup-openclaw.sh

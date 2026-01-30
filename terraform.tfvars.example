@@ -1,0 +1,18 @@
+# Copy this to terraform.tfvars and fill in your values
+# NEVER commit terraform.tfvars to git!
+
+# Required - get from https://console.hetzner.cloud/ → Security → API tokens
+hcloud_token   = "your-hetzner-api-token"
+ssh_public_key = "ssh-ed25519 AAAA... you@example.com"
+
+# Gateway configuration (managed by setup.sh, but you can set manually)
+# gateway_token      = ""        # Auto-generated if empty
+# gateway_bind       = "lan"     # loopback, lan, tailnet
+# allowed_client_ips = []        # Your IP(s), e.g. ["1.2.3.4/32"]
+
+# Optional overrides
+# environment      = "prod"
+# server_type      = "cax11"     # cax11 (ARM), cpx11 (x86)
+# location         = "hel1"      # fsn1, nbg1, hel1 (EU) or ash (US)
+# volume_size_gb   = 10
+# timezone         = "America/Los_Angeles"
