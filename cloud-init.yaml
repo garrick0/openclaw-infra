@@ -11,8 +11,26 @@ packages:
   - htop
   - jq
   - unzip
+  - fail2ban
+  - ufw
 
 write_files:
+  - path: /etc/fail2ban/jail.local
+    permissions: '0644'
+    content: |
+      [DEFAULT]
+      bantime = 3600
+      findtime = 600
+      maxretry = 3
+
+      [sshd]
+      enabled = true
+      port = ssh
+      filter = sshd
+      logpath = /var/log/auth.log
+      maxretry = 3
+      bantime = 3600
+
   - path: /opt/openclaw-config.json
     permissions: '0600'
     content: |
@@ -82,6 +100,10 @@ write_files:
       npm install -g openclaw@${openclaw_version}
       EOF
 
+      # Enable fail2ban for SSH protection
+      systemctl enable fail2ban
+      systemctl start fail2ban
+
       # Enable and start the service
       systemctl daemon-reload
       systemctl enable openclaw
@@ -90,6 +112,7 @@ write_files:
       echo "=========================================="
       echo "OpenClaw installed and running!"
       echo "Gateway listening on port 18789"
+      echo "Fail2ban enabled for SSH protection"
       echo "=========================================="
 
 runcmd:

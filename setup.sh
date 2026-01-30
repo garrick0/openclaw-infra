@@ -80,6 +80,37 @@ ip_in_allowed() {
   grep -qE "allowed_client_ips.*${ip}" "$TFVARS_FILE" 2>/dev/null
 }
 
+# Add IP to allowed list (appends, doesn't overwrite)
+add_ip_to_allowed() {
+  local new_ip="$1"
+  local current
+  current=$(grep -E "^allowed_client_ips\s*=" "$TFVARS_FILE" 2>/dev/null | sed 's/.*=\s*//' | xargs || echo "")
+
+  if [ -z "$current" ] || [ "$current" = "[]" ]; then
+    set_tfvar "allowed_client_ips" "[\"${new_ip}/32\"]"
+  else
+    # Append to existing list (insert before closing bracket)
+    local updated
+    updated=$(echo "$current" | sed "s/\]/, \"${new_ip}\/32\"]/")
+    set_tfvar "allowed_client_ips" "$updated"
+  fi
+}
+
+# Validate inputs to prevent shell injection
+validate_gateway_bind() {
+  local bind="$1"
+  if [[ ! "$bind" =~ ^(loopback|lan|auto|tailnet|custom)$ ]]; then
+    error "Invalid gateway_bind value: $bind (must be loopback|lan|auto|tailnet|custom)"
+  fi
+}
+
+validate_ip() {
+  local ip="$1"
+  if [[ ! "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    error "Invalid IP address: $ip"
+  fi
+}
+
 # Update server config via SSH (for existing deployments)
 update_server_config() {
   local server_ip="$1"
@@ -88,13 +119,26 @@ update_server_config() {
   local gateway_bind
   gateway_bind=$(read_tfvar "gateway_bind" | tr -d '"')
 
-  ssh "root@$server_ip" "
-    jq '.gateway.bind = \"$gateway_bind\" | .gateway.auth.token = \"$gateway_token\"' \
-      /home/openclaw/.openclaw/openclaw.json > /tmp/oc.json && \
-    mv /tmp/oc.json /home/openclaw/.openclaw/openclaw.json && \
-    chown openclaw:openclaw /home/openclaw/.openclaw/openclaw.json && \
+  # Validate inputs before SSH to prevent injection
+  validate_ip "$server_ip"
+  validate_gateway_bind "$gateway_bind"
+  if [[ ${#gateway_token} -lt 32 ]]; then
+    warn "Gateway token seems too short (${#gateway_token} chars)"
+  fi
+
+  # Use printf to safely pass values, avoiding shell injection
+  ssh "root@$server_ip" bash -s "$gateway_bind" "$gateway_token" << 'REMOTE_SCRIPT'
+    set -e
+    BIND="$1"
+    TOKEN="$2"
+    jq --arg bind "$BIND" --arg token "$TOKEN" \
+      '.gateway.bind = $bind | .gateway.auth.token = $token' \
+      /home/openclaw/.openclaw/openclaw.json > /tmp/oc.json
+    mv /tmp/oc.json /home/openclaw/.openclaw/openclaw.json
+    chown openclaw:openclaw /home/openclaw/.openclaw/openclaw.json
+    chmod 600 /home/openclaw/.openclaw/openclaw.json
     systemctl restart openclaw
-  " 2>/dev/null
+REMOTE_SCRIPT
 
   if [ $? -eq 0 ]; then
     success "Server config updated and service restarted"
@@ -142,7 +186,8 @@ main() {
       read -p "Add it now? [Y/n] " -n 1 -r
       echo ""
       if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        set_tfvar "allowed_client_ips" "[\"${my_ip}/32\"]"
+        validate_ip "$my_ip"
+        add_ip_to_allowed "$my_ip"
         success "Added $my_ip/32 to allowed_client_ips"
       fi
     fi

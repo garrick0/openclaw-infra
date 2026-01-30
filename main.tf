@@ -31,14 +31,12 @@ resource "hcloud_ssh_key" "openclaw" {
 resource "hcloud_firewall" "openclaw" {
   name = "openclaw-${var.environment}"
 
+  # SSH - restricted to allowed_ssh_ips (default: anywhere)
   rule {
-    direction = "in"
-    protocol  = "tcp"
-    port      = "22"
-    source_ips = [
-      "0.0.0.0/0",
-      "::/0"
-    ]
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "22"
+    source_ips = var.allowed_ssh_ips
   }
 
   rule {

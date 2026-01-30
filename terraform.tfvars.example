@@ -10,6 +10,9 @@ ssh_public_key = "ssh-ed25519 AAAA... you@example.com"
 # gateway_bind       = "lan"     # loopback, lan, tailnet
 # allowed_client_ips = []        # Your IP(s), e.g. ["1.2.3.4/32"]
 
+# Security: Restrict SSH access (default: anywhere)
+# allowed_ssh_ips    = ["1.2.3.4/32"]  # Your IP(s) for SSH
+
 # Optional overrides
 # environment      = "prod"
 # server_type      = "cax11"     # cax11 (ARM), cpx11 (x86)

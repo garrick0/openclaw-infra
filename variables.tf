@@ -73,3 +73,9 @@ variable "allowed_client_ips" {
   type        = list(string)
   default     = []
 }
+
+variable "allowed_ssh_ips" {
+  description = "IPs allowed to SSH. Default: anywhere. Set to your IPs for better security."
+  type        = list(string)
+  default     = ["0.0.0.0/0", "::/0"]
+}
