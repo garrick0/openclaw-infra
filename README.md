@@ -1,33 +1,67 @@
-# OpenClaw Infrastructure
+# OpenClaw
 
-OpenTofu configuration for deploying OpenClaw to Hetzner Cloud, with support for remote worker mode (server controls your laptop).
+Self-hosted WhatsApp gateway infrastructure for **~$5/month**.
 
-## Prerequisites
+Run your own always-on WhatsApp automation server on Hetzner Cloud. Your laptop connects on-demand — no local daemon required.
 
-- [OpenTofu](https://opentofu.org/) installed (`brew install opentofu`)
-- [Hetzner Cloud account](https://console.hetzner.cloud/)
-- SSH key pair
-- `jq` installed (`brew install jq`)
+## Why?
+
+- **Cheap**: ~€4.25/month on Hetzner (vs $50+/month for commercial APIs)
+- **Self-hosted**: Your data, your server, your rules
+- **Always-on**: Server maintains WhatsApp session 24/7
+- **On-demand**: Laptop connects via WebSocket only when needed
+- **Secure**: Token auth, IP allowlisting, fail2ban protection
+
+## Architecture
+
+```
+┌─────────────────┐         ┌─────────────────┐
+│  Your Laptop    │◄───────►│  Hetzner Server │
+│  (on-demand)    │   WS    │  (always-on)    │
+└─────────────────┘  :18789 └─────────────────┘
+                              │
+                              ▼
+                       ┌──────────────┐
+                       │   WhatsApp   │
+                       └──────────────┘
+```
+
+Your laptop runs in "remote mode" — commands connect to the server, execute, and disconnect. The server maintains persistent connections to WhatsApp.
+
+## What Can You Build?
+
+- **Notification bot** — Send yourself alerts from scripts, cron jobs, CI/CD
+- **AI chatbot** — Connect Claude/GPT to WhatsApp for personal assistant
+- **Automation** — Auto-respond to messages, forward to Slack/Discord
+- **Group management** — Moderation tools, scheduled messages
+- **Backup** — Archive your WhatsApp messages programmatically
 
 ## Quick Start
 
 ```bash
-# 1. First time setup
+# Clone and configure
+git clone https://github.com/garrick0/openclaw-infra.git
+cd openclaw-infra
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your hcloud_token and ssh_public_key
+# Edit terraform.tfvars with your Hetzner token and SSH key
 
-# 2. Initialize OpenTofu
+# Deploy
 tofu init
-
-# 3. Deploy (handles IP allowlisting, token generation, etc.)
 ./setup.sh
 
-# 4. Configure your laptop as a remote worker
+# Configure laptop to connect to server
 ./configure-client.sh
 
-# 5. Verify everything works
+# Verify
 ./status.sh
 ```
+
+## Requirements
+
+- [OpenTofu](https://opentofu.org/) (`brew install opentofu`)
+- [Hetzner Cloud account](https://console.hetzner.cloud/)
+- SSH key pair
+- `jq` (`brew install jq`)
 
 ## Scripts
 
@@ -37,25 +71,6 @@ tofu init
 | `./configure-client.sh` | Configure laptop to connect to remote gateway |
 | `./status.sh` | Health check for server and local client |
 | `./setup-tailscale.sh` | Add Tailscale for encrypted access (recommended) |
-
-## Architecture
-
-```
-┌─────────────────┐         ┌─────────────────┐
-│  Your Laptop    │◄───────►│  Hetzner Server │
-│  (remote mode)  │   WS    │  (gateway)      │
-└─────────────────┘  :18789 └─────────────────┘
-                              │
-                              ▼
-                       ┌──────────────┐
-                       │  WhatsApp    │
-                       │  Gmail, etc  │
-                       └──────────────┘
-```
-
-- **Server**: Runs the gateway, connects to external services (WhatsApp, etc.)
-- **Laptop**: Configured in "remote mode" - commands connect to server on-demand
-- **No local gateway process** runs on your laptop in remote mode
 
 ## Configuration
 
@@ -90,20 +105,7 @@ allowed_client_ips = ["1.2.3.4/32"]     # Your IP, set by setup.sh
 ```
 This installs Tailscale, configures encrypted access, and optionally closes the public port.
 
-**Option B: Reverse proxy**
-Put nginx/caddy in front with Let's Encrypt.
-
-### Rotating the Gateway Token
-
-```bash
-# Generate new token
-NEW_TOKEN=$(openssl rand -hex 24)
-
-# Update tfvars, then run setup
-sed -i '' "s/gateway_token.*/gateway_token = \"$NEW_TOKEN\"/" terraform.tfvars
-./setup.sh
-./configure-client.sh  # Re-configure laptop with new token
-```
+**Option B: Reverse proxy** - Put nginx/caddy in front with Let's Encrypt.
 
 ## Costs
 
@@ -113,23 +115,6 @@ sed -i '' "s/gateway_token.*/gateway_token = \"$NEW_TOKEN\"/" terraform.tfvars
 | cpx11 (x86, 2 vCPU/2GB) | €4.85/mo |
 | Volume (10GB) | €0.44/mo |
 | **Total** | **~€4.25/mo** |
-
-## Files
-
-```
-infra/
-├── setup.sh              # Safe deployment script
-├── configure-client.sh   # Laptop configuration
-├── status.sh             # Health check
-├── main.tf               # Server, firewall, volume
-├── variables.tf          # Input variables
-├── outputs.tf            # Outputs (IP, client config)
-├── cloud-init.yaml       # Server bootstrap
-├── templates/
-│   └── openclaw.json.tpl # Gateway config template
-├── terraform.tfvars      # Your config (gitignored)
-└── terraform.tfvars.example
-```
 
 ## Common Operations
 
@@ -151,6 +136,14 @@ ssh root@$(tofu output -raw server_ip) "systemctl restart openclaw"
 ### Update your IP (when it changes)
 ```bash
 ./setup.sh  # Auto-detects and prompts to update
+```
+
+### Rotate gateway token
+```bash
+NEW_TOKEN=$(openssl rand -hex 24)
+sed -i '' "s/gateway_token.*/gateway_token = \"$NEW_TOKEN\"/" terraform.tfvars
+./setup.sh
+./configure-client.sh  # Re-configure laptop with new token
 ```
 
 ### Migrate WhatsApp session from laptop
@@ -183,6 +176,25 @@ Another WhatsApp Web session is active. Close browser WhatsApp Web or restart:
 ssh root@$(tofu output -raw server_ip) "systemctl restart openclaw"
 ```
 
+## Project Structure
+
+```
+openclaw-infra/
+├── README.md              # You are here
+├── LICENSE
+├── setup.sh               # Deploy/update infrastructure
+├── configure-client.sh    # Configure laptop as remote worker
+├── status.sh              # Health check
+├── setup-tailscale.sh     # Add encrypted access (optional)
+├── main.tf                # Server, firewall, volume resources
+├── variables.tf           # Input variables
+├── outputs.tf             # Outputs (IP, client config)
+├── cloud-init.yaml        # Server bootstrap
+├── templates/
+│   └── openclaw.json.tpl  # Gateway config template
+└── terraform.tfvars.example
+```
+
 ## Destroy
 
 ```bash
@@ -196,3 +208,15 @@ tofu destroy
 SERVER=$(tofu output -raw server_ip)
 scp -r root@$SERVER:/mnt/data/openclaw/.openclaw ~/openclaw-backup/
 ```
+
+## License
+
+MIT License — see [LICENSE](LICENSE)
+
+## Contributing
+
+Issues and PRs welcome. Please open an issue first to discuss major changes.
+
+## Disclaimer
+
+This project interacts with WhatsApp Web unofficially. Use responsibly and in accordance with WhatsApp's Terms of Service. This is intended for personal automation, not spam or bulk messaging.
